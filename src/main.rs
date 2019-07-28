@@ -20,20 +20,10 @@ fn main() -> std::io::Result<()> {
         direction: Direction::South
     };
 
-    let serialized = serde_json::to_string(&a).unwrap();
-    println!("serialized = {}", serialized);
+    let serialized_bytes = serde_json::to_vec(&a).unwrap();
+    println!("serialized = {:?}", serialized_bytes);
 
-    {
-        let mut file = File::create("serialized.json")?;
-        file.write_all(serialized.as_bytes())?;
-    }
-
-    let mut content = String::new();
-    {
-        let mut file = File::open("serialized.json")?;
-        file.read_to_string(&mut content)?;
-    }
-    let deserialized: Move = serde_json::from_str(&content)?;
+    let deserialized: Move = serde_json::from_slice(&serialized_bytes)?;
     println!("deserialized = {:?}", deserialized);
 
     Ok(())
