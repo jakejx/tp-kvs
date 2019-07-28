@@ -15,16 +15,20 @@ struct Move {
     direction: Direction
 }
 
-fn main() -> std::io::Result<()> {
+fn main() -> Result<(), ()> {
     let a = Move {
         direction: Direction::South
     };
 
-    let serialized_bytes = serde_json::to_vec(&a).unwrap();
-    println!("serialized = {:?}", serialized_bytes);
+    let serialized = ron::ser::to_string(&a).unwrap();
+    let serialized_bytes = serialized.into_bytes();
+    println!("{:?}", serialized_bytes);
 
-    let deserialized: Move = serde_json::from_slice(&serialized_bytes)?;
-    println!("deserialized = {:?}", deserialized);
+    let content = std::str::from_utf8(&serialized_bytes).unwrap();
+    println!("{:?}", content);
+
+    // let deserialized: Move = ron::de::from_str(&serialized).unwrap();
+    // println!("deserialized = {:?}", deserialized);
 
     Ok(())
 }
