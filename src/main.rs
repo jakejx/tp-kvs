@@ -18,23 +18,24 @@ struct Move {
 }
 
 fn main() -> Result<(), ()> {
-    serialize();
-    deserialize();
+    let buf = serialize();
+    deserialize(&buf);
     // let deserialized = bson::decode_document(&mut Cursor::new(&buf[..]));
     // println!("{:?}", deserialized);
 
     Ok(())
 }
 
-fn deserialize() {
-    let mut file = File::open("bson").unwrap();
+fn deserialize(mut buf: &Vec<u8>) {
+    let mut cursor = Cursor::new(buf);
     for i in 1..100 {
-        let document = bson::decode_document(&mut file).unwrap();
+        let document = bson::decode_document(&mut cursor).unwrap();
         println!("{:?}", document);
     }
 }
 
-fn serialize() {
+fn serialize() -> Vec<u8> {
+    let mut result = Vec::new();
     for i in 0..100 {
         let a = Move {
             direction: match i % 4 {
@@ -48,17 +49,12 @@ fn serialize() {
 
         let serialized = bson::to_bson(&a).unwrap();
 
-        let mut buf = Vec::new();
         if let bson::Bson::Document(document) = serialized {
+            let mut buf = Vec::new();
             bson::encode_document(&mut buf, &document);
-            let mut file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .append(true)
-                .open("bson")
-                .unwrap();
-            file.write_all(&buf);
+            result.extend(buf);
         }
     }
+
+    result
 }
