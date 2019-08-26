@@ -12,6 +12,7 @@ pub enum KvError {
     Io(io::Error),
     KeyNotFound,
     InternalError,
+    MissingLogFile,
 }
 
 impl From<serde_json::Error> for KvError {
@@ -33,6 +34,7 @@ impl fmt::Display for KvError {
             KvError::Io(ref err) => err.fmt(f),
             KvError::KeyNotFound => write!(f, "Key not found"),
             KvError::InternalError => write!(f, "Internal error"),
+            KvError::MissingLogFile => write!(f, "There is a missing log file"),
         }
     }
 }
@@ -44,6 +46,7 @@ impl Error for KvError {
             KvError::Io(ref err) => err.description(),
             KvError::KeyNotFound => "Key not found",
             KvError::InternalError => "Internal error",
+            KvError::MissingLogFile => "Missing log file",
         }
     }
 }

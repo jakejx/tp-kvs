@@ -7,7 +7,6 @@
 
 mod kv;
 mod errors;
-mod reader_with_pos;
 
 pub use crate::kv::KvStore;
 pub use crate::errors::Result;
