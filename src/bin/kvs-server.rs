@@ -1,11 +1,17 @@
 extern crate clap;
+#[macro_use]
+extern crate slog;
+extern crate slog_term;
+extern crate slog_async;
 
-use clap::{App, Arg, SubCommand};
+use clap::{App, Arg};
 use kvs::{KvStore, Result};
-use std::error::Error;
+use std::net::ToSocketAddrs;
+use slog::o;
+use slog::Drain;
 
-fn valid_engine(input: String) -> std::result::Result<(), String> {
-    if (input == "kvs" || input == "sled") {
+fn valid_engine(engine: String) -> std::result::Result<(), String> {
+    if (engine == "kvs" || engine == "sled") {
         return Ok(());
     }
     Err(String::from(
@@ -13,7 +19,25 @@ fn valid_engine(input: String) -> std::result::Result<(), String> {
     ))
 }
 
+fn valid_ip(ip: String) -> std::result::Result<(), String> {
+    match ip.to_socket_addrs() {
+        Ok(_) => Ok(()),
+        Err(_) => Err(String::from("Invalid address provided")),
+    }
+}
+
+fn init_logger() -> slog::Logger {
+    let decorator = slog_term::TermDecorator::new().stderr().build();
+    let drain = slog_term::CompactFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain).build().fuse();
+
+    slog::Logger::root(drain, o!())
+}
+
 fn main() -> Result<()> {
+    let logger = init_logger();
+    info!(logger, "Application started"; "version" => env!("CARGO_PKG_VERSION"));
+
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author("Junxuan")
@@ -21,7 +45,8 @@ fn main() -> Result<()> {
             Arg::with_name("addr")
                 .long("addr")
                 .value_name("ADDR")
-                .default_value("127.0.0.1:4000"),
+                .default_value("127.0.0.1:4000")
+                .validator(valid_ip),
         )
         .arg(
             Arg::with_name("engine")
@@ -35,6 +60,8 @@ fn main() -> Result<()> {
     // let mut kvs = KvStore::open(std::path::Path::new("."))?;
     let engine = matches.value_of("engine").unwrap();
     let addr = matches.value_of("addr").unwrap();
+
+    info!(logger, "Parsed configuration"; "engine" => engine, "addr" => addr);
 
     Ok(())
 }
