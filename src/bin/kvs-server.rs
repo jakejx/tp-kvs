@@ -1,14 +1,15 @@
 extern crate clap;
 #[macro_use]
 extern crate slog;
-extern crate slog_term;
 extern crate slog_async;
+extern crate slog_term;
 
 use clap::{App, Arg};
-use kvs::{KvStore, Result};
-use std::net::ToSocketAddrs;
-use slog::o;
+use kvs::{KvStore, Result, KvRequest, KvError};
 use slog::Drain;
+use std::net::{ToSocketAddrs, TcpListener, TcpStream};
+use slog::Logger;
+use std::io::{BufReader, BufWriter, BufRead};
 
 fn valid_engine(engine: String) -> std::result::Result<(), String> {
     if (engine == "kvs" || engine == "sled") {
@@ -26,7 +27,7 @@ fn valid_ip(ip: String) -> std::result::Result<(), String> {
     }
 }
 
-fn init_logger() -> slog::Logger {
+fn init_logger() -> Logger {
     let decorator = slog_term::TermDecorator::new().stderr().build();
     let drain = slog_term::CompactFormat::new(decorator).build().fuse();
     let drain = slog_async::Async::new(drain).build().fuse();
@@ -36,7 +37,7 @@ fn init_logger() -> slog::Logger {
 
 fn main() -> Result<()> {
     let logger = init_logger();
-    info!(logger, "Application started"; "version" => env!("CARGO_PKG_VERSION"));
+    info!(logger, "Kvs server started"; "version" => env!("CARGO_PKG_VERSION"));
 
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
@@ -62,6 +63,26 @@ fn main() -> Result<()> {
     let addr = matches.value_of("addr").unwrap();
 
     info!(logger, "Parsed configuration"; "engine" => engine, "addr" => addr);
+
+    let listener = TcpListener::bind(addr)?;
+    debug!(logger, "Listening on {}", addr);
+
+    for client in listener.incoming() {
+        handle_client(client?, &logger)?;
+    }
+
+    Ok(())
+}
+
+fn handle_client(client: TcpStream, logger: &Logger) -> Result<()> {
+    debug!(logger, "Client connected");
+    let reader = BufReader::new(&client);
+    let mut writer = BufWriter::new(&client);
+
+    let mut request_stream = serde_json::Deserializer::from_reader(reader).into_iter::<KvRequest>();
+
+    let req = request_stream.next().ok_or(KvError::MalformedRequest);
+    dbg!(&req?);
 
     Ok(())
 }

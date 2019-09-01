@@ -5,11 +5,13 @@
 
 #![deny(missing_docs)]
 
-mod kv;
 mod errors;
+mod kv;
+mod kv_protocol;
 
+pub use crate::errors::{KvError, Result};
 pub use crate::kv::KvStore;
-pub use crate::errors::Result;
+pub use crate::kv_protocol::KvRequest;
 
 #[cfg(test)]
 mod tests {
