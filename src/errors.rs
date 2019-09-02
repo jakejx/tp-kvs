@@ -8,11 +8,18 @@ use std::result;
 /// This type represents all possible errors that occur when using the library
 #[derive(Debug)]
 pub enum KvError {
+    /// A serde error
     Serde(serde_json::Error),
+    /// An IO error
     Io(io::Error),
+    /// Key not found in the store
     KeyNotFound,
+    /// Internal error
     InternalError,
+    /// Expected log file is not found
     MissingLogFile,
+    /// Request from the client is malformed
+    MalformedRequest,
 }
 
 impl From<serde_json::Error> for KvError {
@@ -35,6 +42,7 @@ impl fmt::Display for KvError {
             KvError::KeyNotFound => write!(f, "Key not found"),
             KvError::InternalError => write!(f, "Internal error"),
             KvError::MissingLogFile => write!(f, "There is a missing log file"),
+            KvError::MalformedRequest => write!(f, "The request was malformed"),
         }
     }
 }
@@ -47,6 +55,7 @@ impl Error for KvError {
             KvError::KeyNotFound => "Key not found",
             KvError::InternalError => "Internal error",
             KvError::MissingLogFile => "Missing log file",
+            KvError::MalformedRequest => "MalformedRequest",
         }
     }
 }
