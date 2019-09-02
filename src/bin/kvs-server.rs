@@ -87,11 +87,6 @@ fn handle_client(client: TcpStream, logger: &Logger, store: &mut KvStore) -> Res
 
     let req = request_stream.next().ok_or(KvError::MalformedRequest);
     match req {
-        Err(_) => {
-            let res = KvResponse::Error("Malformed request".to_string());
-            serde_json::to_writer(writer, &res)?;
-            Ok(())
-        }
         Ok(req) => match req {
             Ok(cmd) => match cmd {
                 KvRequest::Get(k) => {
@@ -113,6 +108,11 @@ fn handle_client(client: TcpStream, logger: &Logger, store: &mut KvStore) -> Res
                 Ok(())
             }
         },
+        Err(_) => {
+            let res = KvResponse::Error("Malformed request".to_string());
+            serde_json::to_writer(writer, &res)?;
+            Ok(())
+        }
     }
 }
 
