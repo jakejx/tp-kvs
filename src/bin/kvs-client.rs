@@ -7,7 +7,7 @@ extern crate slog_term;
 use clap::{App, Arg, SubCommand};
 use kvs::{KvError, KvRequest, KvResponse, Result};
 use slog::Drain;
-use std::io::{BufReader, BufWriter};
+use std::io::{self, BufReader, BufWriter};
 use std::net::{TcpStream, ToSocketAddrs};
 
 fn init_logger() -> slog::Logger {
@@ -29,35 +29,30 @@ fn main() -> Result<()> {
     let logger = init_logger();
     info!(logger, "Kvs client started"; "version" => env!("CARGO_PKG_VERSION"));
 
+    let address_arg = Arg::with_name("addr")
+        .long("addr")
+        .value_name("ADDR")
+        .default_value("127.0.0.1:4000")
+        .validator(valid_ip);
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author("Junxuan")
-        .arg(
-            Arg::with_name("addr")
-                .long("addr")
-                .value_name("ADDR")
-                .default_value("127.0.0.1:4000")
-                .validator(valid_ip),
-        )
         .subcommand(
             SubCommand::with_name("set")
+                .arg(&address_arg)
                 .arg(Arg::with_name("key").required(true).index(1))
                 .arg(Arg::with_name("value").required(true).index(2)),
         )
-        .subcommand(SubCommand::with_name("get").arg(Arg::with_name("key").required(true).index(1)))
-        .subcommand(SubCommand::with_name("rm").arg(Arg::with_name("key").required(true).index(1)))
+        .subcommand(SubCommand::with_name("get").arg(&address_arg).arg(Arg::with_name("key").required(true).index(1)))
+        .subcommand(SubCommand::with_name("rm").arg(&address_arg).arg(Arg::with_name("key").required(true).index(1)))
         .subcommand(SubCommand::with_name("version"))
         .get_matches();
-
-    let addr = matches.value_of("addr").unwrap();
-    info!(logger, "Parsed configuration"; "addr" => addr);
-
-    let connection = TcpStream::connect(addr)?;
-    debug!(logger, "Connected to {}", addr);
 
     match matches.subcommand() {
         ("get", Some(m)) => {
             let key = m.value_of("key").unwrap().to_string();
+            let addr = m.value_of("addr").unwrap();
+            let connection = new_connection(addr, &logger)?;
             info!(logger, "Get key: {}", key);
             let res = handle_get(connection, key)?;
             match res {
@@ -79,6 +74,8 @@ fn main() -> Result<()> {
         ("set", Some(m)) => {
             let key = m.value_of("key").unwrap().to_string();
             let value = m.value_of("value").unwrap().to_string();
+            let addr = m.value_of("addr").unwrap();
+            let connection = new_connection(addr, &logger)?;
             info!(logger, "Set key: {} to value: {}", key, value);
             if let KvResponse::Error(err) = handle_set(connection, key, value)? {
                 println!("{}", err);
@@ -89,9 +86,11 @@ fn main() -> Result<()> {
         }
         ("rm", Some(m)) => {
             let key = m.value_of("key").unwrap().to_string();
+            let addr = m.value_of("addr").unwrap();
+            let connection = new_connection(addr, &logger)?;
             info!(logger, "Remove key: {}", key);
             if let KvResponse::Error(err) = handle_rm(connection, key)? {
-                println!("{}", err);
+                eprintln!("{}", err);
                 std::process::exit(1);
             } else {
                 return Ok(());
@@ -99,6 +98,14 @@ fn main() -> Result<()> {
         }
         _ => std::process::exit(1),
     }
+}
+
+fn new_connection(addr: &str, logger: &slog::Logger) -> io::Result<TcpStream> {
+    info!(logger, "Parsed configuration"; "addr" => addr);
+
+    let connection = TcpStream::connect(addr)?;
+    debug!(logger, "Connected to {}", addr);
+    Ok(connection)
 }
 
 fn handle_get(connection: TcpStream, key: String) -> Result<KvResponse> {

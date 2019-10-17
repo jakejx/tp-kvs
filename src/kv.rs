@@ -6,6 +6,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use crate::errors::{KvError, Result};
+use crate::kv_engine::KvsEngine;
 
 const COMPACTION_THRESHOLD: u64 = 1024 * 1024;
 
@@ -78,52 +79,6 @@ impl KvStore {
         };
 
         Ok(store)
-    }
-
-    /// Sets the value of a key. If the key already exists, it will overwrite the current value.
-    pub fn set(&mut self, key: String, value: String) -> Result<()> {
-        let cmd = Command::Set(key.to_string(), value.to_string());
-        let cmd_pos = KvStore::write_log(&self.writer, &cmd, self.current_gen)?;
-        if let Some(old_cmd) = self.index.insert(key, cmd_pos) {
-            self.compact_space += old_cmd.len;
-        }
-
-        if self.compact_space > COMPACTION_THRESHOLD {
-            self.compact()?;
-        }
-
-        Ok(())
-    }
-
-    /// Retrieves the value associated with the key.
-    pub fn get(&mut self, key: String) -> Result<Option<String>> {
-        let command_pos = self.index.get(&key);
-        if let Some(command) = command_pos {
-            let cmd = self.read_log(&command)?;
-            match cmd {
-                Command::Set(_, value) => Ok(Some(value)),
-                Command::Rm(_) => Err(KvError::InternalError),
-            }
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// Removes the key and its value in the key-value store.
-    pub fn remove(&mut self, key: String) -> Result<()> {
-        if let Some(old_cmd) = self.index.remove(&key) {
-            let cmd = Command::Rm(key.to_string());
-            KvStore::write_log(&self.writer, &cmd, self.current_gen)?;
-            self.compact_space += old_cmd.len;
-        } else {
-            return Err(KvError::KeyNotFound);
-        }
-
-        if self.compact_space > COMPACTION_THRESHOLD {
-            self.compact()?;
-        }
-
-        Ok(())
     }
 
     /// Load the KvStore
@@ -235,4 +190,52 @@ impl KvStore {
 fn format_log_path(path: &Path, gen: u64) -> PathBuf {
     let fname = format!("{}.log", gen);
     path.join(fname)
+}
+
+impl KvsEngine for KvStore {
+    /// Retrieves the value associated with the key.
+    fn get(&mut self, key: String) -> Result<Option<String>> {
+        let command_pos = self.index.get(&key);
+        if let Some(command) = command_pos {
+            let cmd = self.read_log(&command)?;
+            match cmd {
+                Command::Set(_, value) => Ok(Some(value)),
+                Command::Rm(_) => Err(KvError::InternalError),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Sets the value of a key. If the key already exists, it will overwrite the current value.
+    fn set(&mut self, key: String, value: String) -> Result<()> {
+        let cmd = Command::Set(key.to_string(), value.to_string());
+        let cmd_pos = KvStore::write_log(&self.writer, &cmd, self.current_gen)?;
+        if let Some(old_cmd) = self.index.insert(key, cmd_pos) {
+            self.compact_space += old_cmd.len;
+        }
+
+        if self.compact_space > COMPACTION_THRESHOLD {
+            self.compact()?;
+        }
+
+        Ok(())
+    }
+
+    /// Removes the key and its value in the key-value store.
+    fn remove(&mut self, key: String) -> Result<()> {
+        if let Some(old_cmd) = self.index.remove(&key) {
+            let cmd = Command::Rm(key.to_string());
+            KvStore::write_log(&self.writer, &cmd, self.current_gen)?;
+            self.compact_space += old_cmd.len;
+        } else {
+            return Err(KvError::KeyNotFound);
+        }
+
+        if self.compact_space > COMPACTION_THRESHOLD {
+            self.compact()?;
+        }
+
+        Ok(())
+    }
 }
