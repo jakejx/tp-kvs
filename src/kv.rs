@@ -154,11 +154,7 @@ impl KvStore {
         // obtain the last position in the log file
         let pos = writer.seek(SeekFrom::End(0))?;
         let len = writer.write(serialized.as_bytes())? as u64;
-        Ok(CommandPos {
-            gen,
-            pos,
-            len,
-        })
+        Ok(CommandPos { gen, pos, len })
     }
 
     fn compact(&mut self) -> Result<()> {
@@ -171,7 +167,10 @@ impl KvStore {
         // iterate through the entries inside the index
         for (_, cmd_pos) in self.index.iter_mut() {
             // read the value of the key from the correct reader
-            let mut old_reader = self.readers.get(&cmd_pos.gen).ok_or(KvError::InternalError)?;
+            let mut old_reader = self
+                .readers
+                .get(&cmd_pos.gen)
+                .ok_or(KvError::InternalError)?;
             old_reader.seek(SeekFrom::Start(cmd_pos.pos))?;
             let mut entry_reader = old_reader.take(cmd_pos.len);
 

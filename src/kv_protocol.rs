@@ -20,5 +20,5 @@ pub enum KvResponse {
     /// A successful operation
     Success(Option<String>),
     /// An error on the server side
-    Error(String)
+    Error(String),
 }

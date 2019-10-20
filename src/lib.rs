@@ -7,13 +7,15 @@
 
 mod errors;
 mod kv;
-mod kv_protocol;
 mod kv_engine;
+mod kv_protocol;
+mod sled_engine;
 
 pub use crate::errors::{KvError, Result};
 pub use crate::kv::KvStore;
-pub use crate::kv_protocol::{KvRequest, KvResponse};
 pub use crate::kv_engine::KvsEngine;
+pub use crate::kv_protocol::{KvRequest, KvResponse};
+pub use crate::sled_engine::SledEngine;
 
 #[cfg(test)]
 mod tests {

@@ -5,12 +5,13 @@ extern crate slog_async;
 extern crate slog_term;
 
 use clap::{App, Arg};
-use kvs::{KvError, KvRequest, KvResponse, KvStore, Result, KvsEngine};
+use kvs::{KvError, KvRequest, KvResponse, KvStore, KvsEngine, Result, SledEngine};
 use slog::Drain;
 use slog::Logger;
 use std::error::Error;
 use std::io::{BufReader, BufWriter, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use std::path::Path;
 
 fn valid_engine(engine: String) -> std::result::Result<(), String> {
     if engine == "kvs" || engine == "sled" {
@@ -61,14 +62,25 @@ fn main() -> Result<()> {
 
     let engine = matches.value_of("engine").unwrap();
     let addr = matches.value_of("addr").unwrap();
+    let store_path = "./log";
 
     info!(logger, "Parsed configuration"; "engine" => engine, "addr" => addr);
+
+    if !compatible_engine(engine, store_path) {
+        eprintln!("Server started with incompatible engine.");
+        error!(logger, "{} engine incompatible with existing store", engine);
+        std::process::exit(1)
+    }
 
     let listener = TcpListener::bind(addr)?;
     debug!(logger, "Listening on {}", addr);
 
-    let store_path = "./log";
-    let mut store = KvStore::open(store_path)?;
+    let mut store: Box<dyn KvsEngine> = if engine == "sled" {
+        Box::new(SledEngine::open(store_path)?)
+    } else {
+        Box::new(KvStore::open(store_path)?)
+    };
+
     info!(logger, "Loaded store from {}", store_path);
 
     for client in listener.incoming() {
@@ -78,7 +90,24 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn handle_client(client: TcpStream, logger: &Logger, store: &mut KvStore) -> Result<()> {
+fn compatible_engine(engine: &str, path: &str) -> bool {
+    let store_path = Path::new(path);
+    if !store_path.exists() {
+        return true;
+    } else {
+        let db_path = store_path.join("db");
+        if db_path.exists() && engine == "sled" {
+            return true;
+        }
+
+        if !db_path.exists() && engine == "kvs" {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn handle_client(client: TcpStream, logger: &Logger, store: &mut Box<dyn KvsEngine>) -> Result<()> {
     debug!(logger, "Client connected");
     let reader = BufReader::new(&client);
     let writer = BufWriter::new(&client);
@@ -116,7 +145,12 @@ fn handle_client(client: TcpStream, logger: &Logger, store: &mut KvStore) -> Res
     }
 }
 
-fn handle_set<W: Write>(store: &mut KvStore, writer: W, key: String, value: String) -> Result<()> {
+fn handle_set<W: Write>(
+    store: &mut Box<dyn KvsEngine>,
+    writer: W,
+    key: String,
+    value: String,
+) -> Result<()> {
     let value = store.set(key, value);
     match value {
         Ok(_) => {
@@ -132,7 +166,7 @@ fn handle_set<W: Write>(store: &mut KvStore, writer: W, key: String, value: Stri
     }
 }
 
-fn handle_get<W: Write>(store: &mut KvStore, writer: W, key: String) -> Result<()> {
+fn handle_get<W: Write>(store: &mut Box<dyn KvsEngine>, writer: W, key: String) -> Result<()> {
     let value = store.get(key);
     match value {
         Ok(val) => {
@@ -148,7 +182,7 @@ fn handle_get<W: Write>(store: &mut KvStore, writer: W, key: String) -> Result<(
     }
 }
 
-fn handle_rm<W: Write>(store: &mut KvStore, writer: W, key: String) -> Result<()> {
+fn handle_rm<W: Write>(store: &mut Box<dyn KvsEngine>, writer: W, key: String) -> Result<()> {
     let value = store.remove(key);
     match value {
         Ok(_) => {

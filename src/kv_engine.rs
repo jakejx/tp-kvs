@@ -1,4 +1,4 @@
-use crate::errors::{KvError, Result};
+use crate::errors::Result;
 
 /// Trait for engines that are compatible with the KV Store
 pub trait KvsEngine {

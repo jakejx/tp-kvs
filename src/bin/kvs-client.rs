@@ -43,8 +43,16 @@ fn main() -> Result<()> {
                 .arg(Arg::with_name("key").required(true).index(1))
                 .arg(Arg::with_name("value").required(true).index(2)),
         )
-        .subcommand(SubCommand::with_name("get").arg(&address_arg).arg(Arg::with_name("key").required(true).index(1)))
-        .subcommand(SubCommand::with_name("rm").arg(&address_arg).arg(Arg::with_name("key").required(true).index(1)))
+        .subcommand(
+            SubCommand::with_name("get")
+                .arg(&address_arg)
+                .arg(Arg::with_name("key").required(true).index(1)),
+        )
+        .subcommand(
+            SubCommand::with_name("rm")
+                .arg(&address_arg)
+                .arg(Arg::with_name("key").required(true).index(1)),
+        )
         .subcommand(SubCommand::with_name("version"))
         .get_matches();
 

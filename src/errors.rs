@@ -20,6 +20,8 @@ pub enum KvError {
     MissingLogFile,
     /// Request from the client is malformed
     MalformedRequest,
+    /// Error from the sled library
+    SledError(sled::Error),
 }
 
 impl From<serde_json::Error> for KvError {
@@ -34,11 +36,18 @@ impl From<io::Error> for KvError {
     }
 }
 
+impl From<sled::Error> for KvError {
+    fn from(err: sled::Error) -> KvError {
+        KvError::SledError(err)
+    }
+}
+
 impl fmt::Display for KvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             KvError::Serde(ref err) => err.fmt(f),
             KvError::Io(ref err) => err.fmt(f),
+            KvError::SledError(ref err) => err.fmt(f),
             KvError::KeyNotFound => write!(f, "Key not found"),
             KvError::InternalError => write!(f, "Internal error"),
             KvError::MissingLogFile => write!(f, "There is a missing log file"),
@@ -52,6 +61,7 @@ impl Error for KvError {
         match self {
             KvError::Serde(ref err) => err.description(),
             KvError::Io(ref err) => err.description(),
+            KvError::SledError(ref err) => err.description(),
             KvError::KeyNotFound => "Key not found",
             KvError::InternalError => "Internal error",
             KvError::MissingLogFile => "Missing log file",
