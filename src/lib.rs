@@ -9,13 +9,13 @@ mod errors;
 mod kv;
 mod kv_engine;
 mod kv_protocol;
-mod sled_engine;
+pub mod thread_pool;
 
 pub use crate::errors::{KvError, Result};
 pub use crate::kv::KvStore;
 pub use crate::kv_engine::KvsEngine;
 pub use crate::kv_protocol::{KvRequest, KvResponse};
-pub use crate::sled_engine::SledEngine;
+pub use crate::thread_pool::NaiveThreadPool;
 
 #[cfg(test)]
 mod tests {

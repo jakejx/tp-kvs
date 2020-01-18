@@ -203,6 +203,11 @@ impl KvStore {
 
         Ok(())
     }
+
+    /// Clone
+    pub fn clone(&self) -> Self {
+        unimplemented!();
+    }
 }
 
 fn format_log_path(path: &Path, gen: u64) -> PathBuf {
@@ -212,7 +217,8 @@ fn format_log_path(path: &Path, gen: u64) -> PathBuf {
 
 impl KvsEngine for KvStore {
     /// Retrieves the value associated with the key.
-    fn get(&mut self, key: String) -> Result<Option<String>> {
+    fn get(&self, key: String) -> Result<Option<String>> {
+        unimplemented!();
         let command_pos = self.index.get(&key);
         if let Some(command) = command_pos {
             let cmd = self.read_log(&command)?;
@@ -226,7 +232,8 @@ impl KvsEngine for KvStore {
     }
 
     /// Sets the value of a key. If the key already exists, it will overwrite the current value.
-    fn set(&mut self, key: String, value: String) -> Result<()> {
+    fn set(&self, key: String, value: String) -> Result<()> {
+        unimplemented!();
         let cmd = Command::Set(key.to_string(), value.to_string());
         let cmd_pos = KvStore::write_log(&self.writer, &cmd, self.current_gen)?;
         if let Some(old_cmd) = self.index.insert(key, cmd_pos) {
@@ -241,7 +248,8 @@ impl KvsEngine for KvStore {
     }
 
     /// Removes the key and its value in the key-value store.
-    fn remove(&mut self, key: String) -> Result<()> {
+    fn remove(&self, key: String) -> Result<()> {
+        unimplemented!();
         if let Some(old_cmd) = self.index.remove(&key) {
             let cmd = Command::Rm(key.to_string());
             KvStore::write_log(&self.writer, &cmd, self.current_gen)?;
