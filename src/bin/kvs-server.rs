@@ -5,7 +5,7 @@ extern crate slog_async;
 extern crate slog_term;
 
 use clap::{App, Arg};
-use kvs::{KvError, KvRequest, KvResponse, KvStore, KvsEngine, Result};
+use kvs::{KvError, KvRequest, KvResponse, KvStore, KvsEngine, Result, SledEngine};
 use slog::Drain;
 use slog::Logger;
 use std::error::Error;
@@ -75,7 +75,11 @@ fn main() -> Result<()> {
     let listener = TcpListener::bind(addr)?;
     debug!(logger, "Listening on {}", addr);
 
-    let mut store: Box<dyn KvsEngine> = Box::new(KvStore::open(store_path)?);
+    let mut store: Box<dyn KvsEngine> = if engine == "sled" {
+        Box::new(SledEngine::open(store_path)?)
+    } else {
+        Box::new(KvStore::open(store_path)?)
+    };
 
     info!(logger, "Loaded store from {}", store_path);
 

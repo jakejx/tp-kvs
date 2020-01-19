@@ -1,8 +1,11 @@
+use std::sync::Arc;
+use std::sync::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
 use crate::errors::{KvError, Result};
@@ -24,14 +27,41 @@ struct CommandPos {
 }
 
 /// A key-value store
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KvStore {
     store_path: PathBuf,
-    current_gen: u64,
-    index: BTreeMap<String, CommandPos>,
+    index: Arc<RwLock<BTreeMap<String, CommandPos>>>,
+    writer: Arc<RwLock<KvStoreWriter>>,
+    readers: RefCell<KvStoreReader>,
+}
+
+#[derive(Debug)]
+struct KvStoreWriter {
     writer: File,
-    readers: HashMap<u64, File>,
+    current_gen: u64,
     compact_space: u64,
+    safe_gen: u64,
+}
+
+#[derive(Debug)]
+struct KvStoreReader {
+    store_path: PathBuf,
+    readers: HashMap<u64, File>,
+}
+
+impl Clone for KvStoreReader {
+    fn clone(&self) -> Self {
+        let mut readers = HashMap::new();
+        for gen in self.readers.keys().cloned() {
+            let reader = File::open(format_log_path(&self.store_path, gen)).unwrap();
+            readers.insert(gen, reader);
+        }
+
+        KvStoreReader {
+            store_path: self.store_path.clone(),
+            readers,
+        }
+    }
 }
 
 impl KvStore {
@@ -73,13 +103,23 @@ impl KvStore {
         let (reader, writer) = KvStore::new_log(&store_path, current_gen)?;
         readers.insert(current_gen, reader);
 
-        let store = KvStore {
+        let readers = KvStoreReader {
             store_path,
-            current_gen,
-            index,
-            writer,
             readers,
+        };
+
+        let writer = KvStoreWriter {
+            writer: writer,
+            current_gen,
             compact_space,
+            safe_gen: *log_files.first().unwrap_or(&0),
+        };
+
+        let store = KvStore {
+            store_path: readers.store_path.clone(),
+            index: Arc::new(RwLock::new(index)),
+            writer: Arc::new(RwLock::new(writer)),
+            readers: RefCell::new(readers),
         };
 
         Ok(store)
@@ -140,7 +180,8 @@ impl KvStore {
         let gen = cmd_pos.gen;
         let len = cmd_pos.len;
         // obtain the correct reader for the generation
-        let mut reader = self.readers.get(&gen).ok_or(KvError::InternalError)?;
+        let reader_map = &self.readers.borrow().readers;
+        let mut reader = reader_map.get(&gen).ok_or(KvError::InternalError)?;
         // move reader to the start position
         reader.seek(SeekFrom::Start(cmd_pos.pos))?;
         let handle = reader.take(len);
@@ -157,17 +198,21 @@ impl KvStore {
         Ok(CommandPos { gen, pos, len })
     }
 
-    fn compact(&mut self) -> Result<()> {
+    fn compact(&self) -> Result<()> {
         println!("Compaction called");
-        let current_gen = self.current_gen + 1;
+        // get lock on index
+        let mut index = self.index.write().unwrap();
+        let mut kv_writer = self.writer.write().unwrap();
+        let current_gen = kv_writer.current_gen + 1;
         let (reader, mut writer) = KvStore::new_log(&self.store_path, current_gen)?;
         // compact entries into a new generation
         let mut new_pos = 0;
 
         // iterate through the entries inside the index
-        for (_, cmd_pos) in self.index.iter_mut() {
+        for (_, cmd_pos) in index.iter_mut() {
             // read the value of the key from the correct reader
-            let mut old_reader = self
+            let reader = self.readers.borrow();
+            let mut old_reader = reader
                 .readers
                 .get(&cmd_pos.gen)
                 .ok_or(KvError::InternalError)?;
@@ -196,17 +241,14 @@ impl KvStore {
         let mut new_readers = HashMap::new();
         new_readers.insert(current_gen, reader);
 
-        self.current_gen = current_gen;
-        self.readers = new_readers;
-        self.writer = writer;
-        self.compact_space = 0;
+        let mut readers = self.readers.borrow_mut();
+        readers.readers = new_readers;
+        kv_writer.current_gen = current_gen;
+        kv_writer.compact_space = 0;
+        kv_writer.safe_gen = current_gen;
+        kv_writer.writer = writer;
 
         Ok(())
-    }
-
-    /// Clone
-    pub fn clone(&self) -> Self {
-        unimplemented!();
     }
 }
 
@@ -218,8 +260,8 @@ fn format_log_path(path: &Path, gen: u64) -> PathBuf {
 impl KvsEngine for KvStore {
     /// Retrieves the value associated with the key.
     fn get(&self, key: String) -> Result<Option<String>> {
-        unimplemented!();
-        let command_pos = self.index.get(&key);
+        let index = self.index.read().unwrap();
+        let command_pos = index.get(&key);
         if let Some(command) = command_pos {
             let cmd = self.read_log(&command)?;
             match cmd {
@@ -233,14 +275,16 @@ impl KvsEngine for KvStore {
 
     /// Sets the value of a key. If the key already exists, it will overwrite the current value.
     fn set(&self, key: String, value: String) -> Result<()> {
-        unimplemented!();
-        let cmd = Command::Set(key.to_string(), value.to_string());
-        let cmd_pos = KvStore::write_log(&self.writer, &cmd, self.current_gen)?;
-        if let Some(old_cmd) = self.index.insert(key, cmd_pos) {
-            self.compact_space += old_cmd.len;
+        {
+            let mut writer = self.writer.write().unwrap();
+            let cmd = Command::Set(key.to_string(), value.to_string());
+            let cmd_pos = KvStore::write_log(&writer.writer, &cmd, writer.current_gen)?;
+            if let Some(old_cmd) = self.index.write().unwrap().insert(key, cmd_pos) {
+                writer.compact_space += old_cmd.len;
+            }
         }
 
-        if self.compact_space > COMPACTION_THRESHOLD {
+        if self.writer.read().unwrap().compact_space > COMPACTION_THRESHOLD {
             self.compact()?;
         }
 
@@ -249,16 +293,19 @@ impl KvsEngine for KvStore {
 
     /// Removes the key and its value in the key-value store.
     fn remove(&self, key: String) -> Result<()> {
-        unimplemented!();
-        if let Some(old_cmd) = self.index.remove(&key) {
-            let cmd = Command::Rm(key.to_string());
-            KvStore::write_log(&self.writer, &cmd, self.current_gen)?;
-            self.compact_space += old_cmd.len;
-        } else {
-            return Err(KvError::KeyNotFound);
+        {
+            let mut index = self.index.write().unwrap();
+            let mut writer = self.writer.write().unwrap();
+            if let Some(old_cmd) = index.remove(&key) {
+                let cmd = Command::Rm(key.to_string());
+                KvStore::write_log(&writer.writer, &cmd, writer.current_gen)?;
+                writer.compact_space += old_cmd.len;
+            } else {
+                return Err(KvError::KeyNotFound);
+            }
         }
 
-        if self.compact_space > COMPACTION_THRESHOLD {
+        if self.writer.read().unwrap().compact_space > COMPACTION_THRESHOLD {
             self.compact()?;
         }
 

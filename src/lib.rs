@@ -8,11 +8,13 @@
 mod errors;
 mod kv;
 mod kv_engine;
+mod sled_engine;
 mod kv_protocol;
 pub mod thread_pool;
 
 pub use crate::errors::{KvError, Result};
 pub use crate::kv::KvStore;
+pub use crate::sled_engine::SledEngine;
 pub use crate::kv_engine::KvsEngine;
 pub use crate::kv_protocol::{KvRequest, KvResponse};
 pub use crate::thread_pool::NaiveThreadPool;
