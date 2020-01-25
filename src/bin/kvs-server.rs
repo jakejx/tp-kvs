@@ -5,7 +5,7 @@ extern crate slog_async;
 extern crate slog_term;
 
 use clap::{App, Arg};
-use kvs::{KvError, KvRequest, KvResponse, KvStore, KvsEngine, Result, SledEngine};
+use kvs::{KvError, KvRequest, KvResponse, KvStore, KvsEngine, Result, NaiveThreadPool, ThreadPool, SharedQueueThreadPool};
 use slog::Drain;
 use slog::Logger;
 use std::error::Error;

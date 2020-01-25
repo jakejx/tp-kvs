@@ -17,7 +17,7 @@ pub use crate::kv::KvStore;
 pub use crate::sled_engine::SledEngine;
 pub use crate::kv_engine::KvsEngine;
 pub use crate::kv_protocol::{KvRequest, KvResponse};
-pub use crate::thread_pool::NaiveThreadPool;
+pub use crate::thread_pool::{NaiveThreadPool, ThreadPool, SharedQueueThreadPool};
 
 #[cfg(test)]
 mod tests {

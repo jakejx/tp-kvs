@@ -1,7 +1,7 @@
 use crate::errors::Result;
 
 /// Trait for engines that are compatible with the KV Store
-pub trait KvsEngine {
+pub trait KvsEngine: Clone + Send + 'static {
     /// Get a particular key from the store
     fn get(&self, key: String) -> Result<Option<String>>;
 

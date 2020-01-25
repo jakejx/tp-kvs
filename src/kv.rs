@@ -32,7 +32,7 @@ pub struct KvStore {
     store_path: PathBuf,
     index: Arc<RwLock<BTreeMap<String, CommandPos>>>,
     writer: Arc<RwLock<KvStoreWriter>>,
-    readers: RefCell<KvStoreReader>,
+    readers: KvStoreReader,
 }
 
 #[derive(Debug)]
@@ -46,20 +46,20 @@ struct KvStoreWriter {
 #[derive(Debug)]
 struct KvStoreReader {
     store_path: PathBuf,
-    readers: HashMap<u64, File>,
+    readers: Arc<RwLock<HashMap<u64, File>>>,
 }
 
 impl Clone for KvStoreReader {
     fn clone(&self) -> Self {
         let mut readers = HashMap::new();
-        for gen in self.readers.keys().cloned() {
+        for gen in self.readers.read().unwrap().keys().cloned() {
             let reader = File::open(format_log_path(&self.store_path, gen)).unwrap();
             readers.insert(gen, reader);
         }
 
         KvStoreReader {
             store_path: self.store_path.clone(),
-            readers,
+            readers: Arc::new(RwLock::new(readers)),
         }
     }
 }
@@ -105,7 +105,7 @@ impl KvStore {
 
         let readers = KvStoreReader {
             store_path,
-            readers,
+            readers: Arc::new(RwLock::new(readers)),
         };
 
         let writer = KvStoreWriter {
@@ -119,7 +119,7 @@ impl KvStore {
             store_path: readers.store_path.clone(),
             index: Arc::new(RwLock::new(index)),
             writer: Arc::new(RwLock::new(writer)),
-            readers: RefCell::new(readers),
+            readers
         };
 
         Ok(store)
@@ -180,8 +180,14 @@ impl KvStore {
         let gen = cmd_pos.gen;
         let len = cmd_pos.len;
         // obtain the correct reader for the generation
-        let reader_map = &self.readers.borrow().readers;
-        let mut reader = reader_map.get(&gen).ok_or(KvError::InternalError)?;
+        let reader_map = &mut self.readers.readers.write().unwrap();
+        let mut reader = reader_map.get(&gen);
+        if reader.is_none() {
+            let new_reader = File::open(format_log_path(&self.readers.store_path, gen)).unwrap();
+            reader_map.insert(gen, new_reader);
+            reader = reader_map.get(&gen);
+        }
+        let mut reader = reader.unwrap();
         // move reader to the start position
         reader.seek(SeekFrom::Start(cmd_pos.pos))?;
         let handle = reader.take(len);
@@ -211,9 +217,8 @@ impl KvStore {
         // iterate through the entries inside the index
         for (_, cmd_pos) in index.iter_mut() {
             // read the value of the key from the correct reader
-            let reader = self.readers.borrow();
+            let reader = self.readers.readers.write().unwrap();
             let mut old_reader = reader
-                .readers
                 .get(&cmd_pos.gen)
                 .ok_or(KvError::InternalError)?;
             old_reader.seek(SeekFrom::Start(cmd_pos.pos))?;
@@ -241,8 +246,8 @@ impl KvStore {
         let mut new_readers = HashMap::new();
         new_readers.insert(current_gen, reader);
 
-        let mut readers = self.readers.borrow_mut();
-        readers.readers = new_readers;
+        let mut readers = self.readers.readers.write().unwrap();
+        *readers = new_readers;
         kv_writer.current_gen = current_gen;
         kv_writer.compact_space = 0;
         kv_writer.safe_gen = current_gen;
