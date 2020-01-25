@@ -5,12 +5,11 @@ extern crate slog_async;
 extern crate slog_term;
 
 use clap::{App, Arg};
-use kvs::{KvError, KvRequest, KvResponse, KvStore, KvsEngine, Result, NaiveThreadPool, ThreadPool, SharedQueueThreadPool};
+use kvs::server::KvServer;
+use kvs::{KvStore, Result, SharedQueueThreadPool, SledEngine, ThreadPool};
 use slog::Drain;
 use slog::Logger;
-use std::error::Error;
-use std::io::{BufReader, BufWriter, Write};
-use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::path::Path;
 
 fn valid_engine(engine: String) -> std::result::Result<(), String> {
@@ -63,6 +62,7 @@ fn main() -> Result<()> {
     let engine = matches.value_of("engine").unwrap();
     let addr = matches.value_of("addr").unwrap();
     let store_path = "./log";
+    let pool = SharedQueueThreadPool::new(4)?;
 
     info!(logger, "Parsed configuration"; "engine" => engine, "addr" => addr);
 
@@ -71,21 +71,18 @@ fn main() -> Result<()> {
         error!(logger, "{} engine incompatible with existing store", engine);
         std::process::exit(1)
     }
+    info!(logger, "Loading store from {}", store_path);
 
-    let listener = TcpListener::bind(addr)?;
-    debug!(logger, "Listening on {}", addr);
-
-    let mut store: Box<dyn KvsEngine> = if engine == "sled" {
-        Box::new(SledEngine::open(store_path)?)
-    } else {
-        Box::new(KvStore::open(store_path)?)
+    match engine {
+        "sled" => {
+            let server = KvServer::new(SledEngine::open(store_path)?, pool, logger);
+            let _ = server.run(addr);
+        }
+        _ => {
+            let server = KvServer::new(KvStore::open(store_path)?, pool, logger);
+            let _ = server.run(addr);
+        }
     };
-
-    info!(logger, "Loaded store from {}", store_path);
-
-    for client in listener.incoming() {
-        let _ = handle_client(client?, &logger, &mut store);
-    }
 
     Ok(())
 }
@@ -103,97 +100,7 @@ fn compatible_engine(engine: &str, path: &str) -> bool {
         if !db_path.exists() && engine == "kvs" {
             return true;
         }
-    }
-    return false;
-}
 
-fn handle_client(client: TcpStream, logger: &Logger, store: &mut Box<dyn KvsEngine>) -> Result<()> {
-    debug!(logger, "Client connected");
-    let reader = BufReader::new(&client);
-    let writer = BufWriter::new(&client);
-
-    let mut request_stream = serde_json::Deserializer::from_reader(reader).into_iter::<KvRequest>();
-
-    let req = request_stream.next().ok_or(KvError::MalformedRequest);
-    match req {
-        Ok(req) => match req {
-            Ok(cmd) => match cmd {
-                KvRequest::Get(k) => {
-                    info!(logger, "Get key: {}", k);
-                    handle_get(store, writer, k)
-                }
-                KvRequest::Set(k, v) => {
-                    info!(logger, "Set key: {} to value: {}", k, v);
-                    handle_set(store, writer, k, v)
-                }
-                KvRequest::Rm(k) => {
-                    info!(logger, "Delete key: {}", k);
-                    handle_rm(store, writer, k)
-                }
-            },
-            Err(_) => {
-                let res = KvResponse::Error("Malformed request".to_string());
-                serde_json::to_writer(writer, &res)?;
-                Ok(())
-            }
-        },
-        Err(_) => {
-            let res = KvResponse::Error("Malformed request".to_string());
-            serde_json::to_writer(writer, &res)?;
-            Ok(())
-        }
-    }
-}
-
-fn handle_set<W: Write>(
-    store: &mut Box<dyn KvsEngine>,
-    writer: W,
-    key: String,
-    value: String,
-) -> Result<()> {
-    let value = store.set(key, value);
-    match value {
-        Ok(_) => {
-            let res = KvResponse::Success(None);
-            let _ = serde_json::to_writer(writer, &res)?;
-            Ok(())
-        }
-        Err(err) => {
-            let err_res = KvResponse::Error(err.description().to_string());
-            let _ = serde_json::to_writer(writer, &err_res)?;
-            Err(err)
-        }
-    }
-}
-
-fn handle_get<W: Write>(store: &mut Box<dyn KvsEngine>, writer: W, key: String) -> Result<()> {
-    let value = store.get(key);
-    match value {
-        Ok(val) => {
-            let res = KvResponse::Success(val);
-            let _ = serde_json::to_writer(writer, &res)?;
-            Ok(())
-        }
-        Err(err) => {
-            let err_res = KvResponse::Error(err.description().to_string());
-            let _ = serde_json::to_writer(writer, &err_res)?;
-            Err(err)
-        }
-    }
-}
-
-fn handle_rm<W: Write>(store: &mut Box<dyn KvsEngine>, writer: W, key: String) -> Result<()> {
-    let value = store.remove(key);
-    match value {
-        Ok(_) => {
-            let res = KvResponse::Success(None);
-            let _ = serde_json::to_writer(writer, &res)?;
-            Ok(())
-        }
-        Err(err) => {
-            let err_res = KvResponse::Error(err.description().to_string());
-            let _ = serde_json::to_writer(writer, &err_res)?;
-            Err(err)
-        }
+        return false;
     }
 }

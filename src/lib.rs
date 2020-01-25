@@ -5,11 +5,15 @@
 
 #![deny(missing_docs)]
 
+#[macro_use]
+extern crate slog;
+
 mod errors;
 mod kv;
 mod kv_engine;
 mod sled_engine;
 mod kv_protocol;
+pub mod server;
 pub mod thread_pool;
 
 pub use crate::errors::{KvError, Result};

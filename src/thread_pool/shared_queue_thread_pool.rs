@@ -70,7 +70,7 @@ impl ThreadPool for SharedQueueThreadPool {
             for message in dispatch_rx {
                 match message {
                     m @ ThreadPoolMessage::RunJob(_) => {
-                        if publisher.queue.len() == 0 {
+                        if publisher.queue.is_empty() {
                             let _ = retry_sender.send(m);
                         } else {
                             let thread_id = publisher.queue.pop_front().unwrap();
@@ -106,6 +106,6 @@ impl ThreadPool for SharedQueueThreadPool {
 
 impl Drop for SharedQueueThreadPool {
     fn drop(&mut self) {
-        self.sender.send(ThreadPoolMessage::Shutdown);
+        let _ = self.sender.send(ThreadPoolMessage::Shutdown);
     }
 }

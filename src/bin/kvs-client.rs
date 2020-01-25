@@ -67,7 +67,7 @@ fn main() -> Result<()> {
                 KvResponse::Success(value) => {
                     if let Some(v) = value {
                         println!("{}", v);
-                        return Ok(());
+                        Ok(())
                     } else {
                         println!("Key not found");
                         std::process::exit(0);
@@ -89,7 +89,7 @@ fn main() -> Result<()> {
                 println!("{}", err);
                 std::process::exit(1);
             } else {
-                return Ok(());
+                Ok(())
             }
         }
         ("rm", Some(m)) => {
@@ -101,7 +101,7 @@ fn main() -> Result<()> {
                 eprintln!("{}", err);
                 std::process::exit(1);
             } else {
-                return Ok(());
+                Ok(())
             }
         }
         _ => std::process::exit(1),

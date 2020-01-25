@@ -18,7 +18,7 @@ impl ThreadPool for NaiveThreadPool {
     fn new(num_threads: usize) -> io::Result<Self> {
         let mut channels: Vec<_> = Vec::with_capacity(num_threads);
         let mut threads: Vec<_> = Vec::with_capacity(num_threads);
-        for i in 0..num_threads {
+        for _ in 0..num_threads {
             let (tx, rx) = channel::<Job>();
             channels.push(tx);
 
@@ -26,7 +26,7 @@ impl ThreadPool for NaiveThreadPool {
             let builder = thread::Builder::new();
             let handle = builder.spawn(move || {
                 for job in rx {
-                    println!("Worker #{} got a job", i);
+                    // println!("Worker #{} got a job", i);
                     job();
                 }
             })?;
@@ -45,7 +45,7 @@ impl ThreadPool for NaiveThreadPool {
         F: FnOnce() + Send + 'static,
     {
         let tx = self.channels.get(self.current_thread.get()).unwrap();
-        tx.send(Box::new(job));
+        let _ = tx.send(Box::new(job));
 
         self.current_thread.set(( self.current_thread.get() + 1 ) % self.threads.len() );
     }

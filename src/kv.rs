@@ -5,7 +5,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
 use crate::errors::{KvError, Result};
@@ -109,7 +108,7 @@ impl KvStore {
         };
 
         let writer = KvStoreWriter {
-            writer: writer,
+            writer,
             current_gen,
             compact_space,
             safe_gen: *log_files.first().unwrap_or(&0),
@@ -282,7 +281,7 @@ impl KvsEngine for KvStore {
     fn set(&self, key: String, value: String) -> Result<()> {
         {
             let mut writer = self.writer.write().unwrap();
-            let cmd = Command::Set(key.to_string(), value.to_string());
+            let cmd = Command::Set(key.to_string(), value);
             let cmd_pos = KvStore::write_log(&writer.writer, &cmd, writer.current_gen)?;
             if let Some(old_cmd) = self.index.write().unwrap().insert(key, cmd_pos) {
                 writer.compact_space += old_cmd.len;

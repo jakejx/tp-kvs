@@ -5,6 +5,7 @@ use sled::{Db, IVec};
 use std::path::Path;
 
 /// A key-value store using the Sled engine
+#[derive(Clone)]
 pub struct SledEngine {
     store: Db,
 }
